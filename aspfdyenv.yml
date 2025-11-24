@@ -1,0 +1,9 @@
+name: aspfdyenv
+channels:
+  - defaults
+dependencies:
+  - python>=3.10
+  - networkx
+  - jupyter
+  - numpy
+  - matplotlib
