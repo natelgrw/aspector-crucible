@@ -4,7 +4,7 @@ ASPECTOR Foundry is a tool for generating diverse op-amp Spectre netlists for da
 
 ASPECTOR Foundry is part of the ASPECTOR suite, a collection of tools for AI-driven op-amp design and analysis. It is designed to be used in tandem with ASPECTOR Core, a Spectre netlist simulation pipeline for performance optimization and data collection.
 
-Current Version: **1.0.0**
+Current Version: **1.1.0**
 
 ## 💎 Features
 

@@ -1,6 +1,6 @@
 SINGLE_ENDED_TEMPLATE = """simulator lang=spectre 
 global 0 gnd! vdd!
-parameters fet_num=<<FET_NUM>> use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} vbiasp2={{vbiasp2}} vbiasn0={{vbiasn0}} vbiasn2={{vbiasn2}} <<EXTRA_PARAMS>>
+parameters fet_num=<<FET_NUM>> use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} <<EXTRA_PARAMS>>
 
 <<INCLUDES>>
 
@@ -33,10 +33,6 @@ Rfeedback_p (Vinn Voutp) resistor r=((use_tran * rfeedback_val) + ((1 - use_tran
 
 Ctran_p (Voutp gnd!) capacitor c=(use_tran * 50f)
 
-*---Bias Voltages---
-VP2 (Vbiasp2 gnd!) vsource dc=vbiasp2 type=dc
-VN (Vbiasn0 gnd!) vsource dc=vbiasn0 type=dc
-VN2 (Vbiasn2 gnd!) vsource dc=vbiasn2 type=dc
 
 simulatorOptions options rawfmt=psfbin psfversion="1.4.0" reltol=1e-3 vabstol=1e-6 \\
     iabstol=1e-12 temp=tempc tnom=27 scalem=1.0 scale=1.0 gmin=1e-12 rforce=1 \\
@@ -74,7 +70,7 @@ saveOptions options save=allpub rawfmt=psfbin
 
 DIFFERENTIAL_TEMPLATE = """simulator lang=spectre 
 global 0 gnd! vdd!
-parameters use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} vbiasp0={{vbiasp0}} vbiasp1={{vbiasp1}} vbiasp2={{vbiasp2}} vbiasn1={{vbiasn1}} vbiasn2={{vbiasn2}} <<EXTRA_PARAMS>>
+parameters fet_num=<<FET_NUM>> use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} <<EXTRA_PARAMS>>
 
 <<INCLUDES>>
 
@@ -109,12 +105,6 @@ Rfeedback_n (Vinp Voutn) resistor r=((use_tran * rfeedback_val) + ((1 - use_tran
 Ctran_p (Voutp gnd!) capacitor c=(use_tran * 50f)
 Ctran_n (Voutn gnd!) capacitor c=(use_tran * 50f)
 
-*---Bias Voltages---
-VP (Vbiasp0 gnd!) vsource dc=vbiasp0 type=dc
-VP1 (Vbiasp1 gnd!) vsource dc=vbiasp1 type=dc
-VP2 (Vbiasp2 gnd!) vsource dc=vbiasp2 type=dc
-VN1 (Vbiasn1 gnd!) vsource dc=vbiasn1 type=dc
-VN2 (Vbiasn2 gnd!) vsource dc=vbiasn2 type=dc
 
 simulatorOptions options psfversion="1.4.0" reltol=1e-3 vabstol=1e-6 \\
     iabstol=1e-12 temp=tempc tnom=27 scalem=1.0 scale=1.0 gmin=1e-12 rforce=1 \\

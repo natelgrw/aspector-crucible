@@ -1,6 +1,6 @@
 simulator lang=spectre 
 global 0 gnd! vdd!
-parameters use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} vbiasp0={{vbiasp0}} vbiasp1={{vbiasp1}} vbiasp2={{vbiasp2}} vbiasn1={{vbiasn1}} vbiasn2={{vbiasn2}} nA1={{nA1}} nA10={{nA10}} nA11={{nA11}} nA12={{nA12}} nA2={{nA2}} nA3={{nA3}} nA4={{nA4}} nA5={{nA5}} nA6={{nA6}} nA7={{nA7}} nA8={{nA8}} nA9={{nA9}} nB1={{nB1}} nB10={{nB10}} nB11={{nB11}} nB12={{nB12}} nB2={{nB2}} nB3={{nB3}} nB4={{nB4}} nB5={{nB5}} nB6={{nB6}} nB7={{nB7}} nB8={{nB8}} nB9={{nB9}} nC0={{nC0}} nR0={{nR0}}
+parameters fet_num={{fet_num}} use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} nA1={{nA1}} nA2={{nA2}} nA3={{nA3}} nA4={{nA4}} nB1={{nB1}} nB2={{nB2}} nB3={{nB3}} nB4={{nB4}} nC0={{nC0}} nR0={{nR0}} vbiasn1={{vbiasn1}} vbiasn2={{vbiasn2}} vbiasn3={{vbiasn3}} vbiasn4={{vbiasn4}} vinn={{vinn}} vinp={{vinp}} voutn={{voutn}} voutp={{voutp}}
 
 {% if fet_num == 7 %}
 include "/homes/natelgrw/Documents/titan_foundation_model/lstp/7nfet.pm"
@@ -20,21 +20,18 @@ include "/homes/natelgrw/Documents/titan_foundation_model/lstp/20pfet.pm"
 {% endif %}
 
 *---Core---
-*---Generated Circuit 1---
-MM0 net8 Voutn net13 gnd! nfet l=nA1 nfin=nB1
-MM1 vdd! net0 net1 gnd! nfet l=nA2 nfin=nB2
-MM2 net9 net2 net15 gnd! nfet l=nA5 nfin=nB5
-MM3 net13 Vbiasp0 net0 gnd! nfet l=nA6 nfin=nB6
-MM4 net1 Voutn Vbiasp1 vdd! pfet l=nA7 nfin=nB7
-MM5 Vbiasp0 net0 Vinn vdd! pfet l=nA8 nfin=nB8
-MM6 net0 gnd! net4 vdd! pfet l=nA9 nfin=nB9
-MM7 net2 net6 Vbiasn1 vdd! pfet l=nA10 nfin=nB10
-MM8 net6 net4 net8 vdd! pfet l=nA11 nfin=nB11
-MM9 Vinn Vinp net9 vdd! pfet l=nA12 nfin=nB12
-MM10 net8 net10 net5 vdd! pfet l=nA3 nfin=nB3
-MM11 net15 net10 Vbiasn1 vdd! pfet l=nA4 nfin=nB4
-R0 (net5 Voutp) resistor r=nR0
-C0 (net4 net5) capacitor c=nC0
+MM0 Vinn Vinn Voutp gnd! nfet l=nA1 nfin=nB1
+MM1 Voutp gnd! Vbiasn3 gnd! nfet l=nA2 nfin=nB2
+MM2 Vinp Vbiasn4 Vbiasn2 vdd! pfet l=nA3 nfin=nB3
+MM3 Vbiasn1 Voutp Vinp vdd! pfet l=nA4 nfin=nB4
+R0 (Voutn Vbiasn2) resistor r=nR0
+C0 (vdd! Vbiasn3) capacitor c=nC0
+
+*---Bias Sources---
+V_Vbiasn1 (Vbiasn1 gnd!) vsource dc=vbiasn1 type=dc
+V_Vbiasn2 (Vbiasn2 gnd!) vsource dc=vbiasn2 type=dc
+V_Vbiasn3 (Vbiasn3 gnd!) vsource dc=vbiasn3 type=dc
+V_Vbiasn4 (Vbiasn4 gnd!) vsource dc=vbiasn4 type=dc
 
 *---Ground, VDD, VCM Declarations---
 VS (gnd! 0) vsource dc=0 type=dc
@@ -64,12 +61,6 @@ Rfeedback_n (Vinp Voutn) resistor r=((use_tran * rfeedback_val) + ((1 - use_tran
 Ctran_p (Voutp gnd!) capacitor c=(use_tran * 50f)
 Ctran_n (Voutn gnd!) capacitor c=(use_tran * 50f)
 
-*---Bias Voltages---
-VP (Vbiasp0 gnd!) vsource dc=vbiasp0 type=dc
-VP1 (Vbiasp1 gnd!) vsource dc=vbiasp1 type=dc
-VP2 (Vbiasp2 gnd!) vsource dc=vbiasp2 type=dc
-VN1 (Vbiasn1 gnd!) vsource dc=vbiasn1 type=dc
-VN2 (Vbiasn2 gnd!) vsource dc=vbiasn2 type=dc
 
 simulatorOptions options psfversion="1.4.0" reltol=1e-3 vabstol=1e-6 \
     iabstol=1e-12 temp=tempc tnom=27 scalem=1.0 scale=1.0 gmin=1e-12 rforce=1 \
