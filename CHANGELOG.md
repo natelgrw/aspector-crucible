@@ -1,3 +1,10 @@
+Version **1.1.1**
+
+Date Released: **12/21/2025**
+
+- Bug fixes and netlist formatting improvements
+- Intensive checking protocol for bias connections
+
 Version **1.1.0**
 
 Date Released: **12/18/2025**

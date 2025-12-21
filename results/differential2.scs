@@ -1,6 +1,6 @@
 simulator lang=spectre 
 global 0 gnd! vdd!
-parameters fet_num={{fet_num}} use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} nA1={{nA1}} nA2={{nA2}} nA3={{nA3}} nA4={{nA4}} nB1={{nB1}} nB2={{nB2}} nB3={{nB3}} nB4={{nB4}} nC0={{nC0}} nR0={{nR0}} vbiasn0={{vbiasn0}} vbiasn1={{vbiasn1}} vbiasn3={{vbiasn3}} vbiasn4={{vbiasn4}} vbiasp0={{vbiasp0}} vinn={{vinn}} vinp={{vinp}} voutn={{voutn}} voutp={{voutp}}
+parameters fet_num={{fet_num}} use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} nA0={{nA0}} nA1={{nA1}} nA2={{nA2}} nA3={{nA3}} nA4={{nA4}} nA5={{nA5}} nA6={{nA6}} nA7={{nA7}} nA8={{nA8}} nA9={{nA9}} nB0={{nB0}} nB1={{nB1}} nB2={{nB2}} nB3={{nB3}} nB4={{nB4}} nB5={{nB5}} nB6={{nB6}} nB7={{nB7}} nB8={{nB8}} nB9={{nB9}} nC0={{nC0}} nR0={{nR0}} vbiasn1={{vbiasn1}} vbiasp0={{vbiasp0}} vbiasp1={{vbiasp1}}
 
 {% if fet_num == 7 %}
 include "/homes/natelgrw/Documents/titan_foundation_model/lstp/7nfet.pm"
@@ -20,19 +20,25 @@ include "/homes/natelgrw/Documents/titan_foundation_model/lstp/20pfet.pm"
 {% endif %}
 
 *---Core---
-MM0 Vbiasn4 Vbiasp0 Vinn gnd! nfet l=nA1 nfin=nB1
-MM1 Vbiasn1 Voutn net2 gnd! nfet l=nA2 nfin=nB2
-MM2 Vinp net2 Vinn vdd! pfet l=nA3 nfin=nB3
-MM3 Vbiasn0 Voutp net4 vdd! pfet l=nA4 nfin=nB4
-R0 (Vbiasn3 Voutp) resistor r=nR0
-C0 (net4 Voutn) capacitor c=nC0
+* Circuit_2 Vbiasn1 Vbiasp0 Vbiasp1 Vinn Vinp Voutn Voutp
+*.PININFO Vbiasn1:I Vbiasp0:I Vbiasp1:I Vinn:I Vinp:I Voutn:O Voutp:O
+MM0 net4 Vinp net1 gnd! nfet l=nA0 nfin=nB0
+MM1 net6 Vbiasn1 Voutn gnd! nfet l=nA1 nfin=nB1
+MM2 gnd! Vinn Voutn gnd! nfet l=nA2 nfin=nB2
+MM3 Voutn net6 net1 gnd! nfet l=nA3 nfin=nB3
+MM4 net3 net2 net5 gnd! nfet l=nA4 nfin=nB4
+MM5 Voutp net2 net0 vdd! pfet l=nA5 nfin=nB5
+MM6 net3 Vbiasp0 net4 vdd! pfet l=nA6 nfin=nB6
+MM7 net9 net6 net3 vdd! pfet l=nA7 nfin=nB7
+MM8 net0 vdd! net9 vdd! pfet l=nA8 nfin=nB8
+MM9 Voutp Vbiasp1 net5 vdd! pfet l=nA9 nfin=nB9
+R0 (net5 Vinp) resistor r=nR0
+C0 (Voutn net5) capacitor c=nC0
 
 *---Bias Sources---
-V_Vbiasn0 (Vbiasn0 gnd!) vsource dc=vbiasn0 type=dc
 V_Vbiasn1 (Vbiasn1 gnd!) vsource dc=vbiasn1 type=dc
-V_Vbiasn3 (Vbiasn3 gnd!) vsource dc=vbiasn3 type=dc
-V_Vbiasn4 (Vbiasn4 gnd!) vsource dc=vbiasn4 type=dc
 V_Vbiasp0 (Vbiasp0 gnd!) vsource dc=vbiasp0 type=dc
+V_Vbiasp1 (Vbiasp1 gnd!) vsource dc=vbiasp1 type=dc
 
 *---Ground, VDD, VCM Declarations---
 VS (gnd! 0) vsource dc=0 type=dc

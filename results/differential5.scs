@@ -1,6 +1,6 @@
 simulator lang=spectre 
 global 0 gnd! vdd!
-parameters fet_num={{fet_num}} use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} nA1={{nA1}} nA2={{nA2}} nA3={{nA3}} nA4={{nA4}} nB1={{nB1}} nB2={{nB2}} nB3={{nB3}} nB4={{nB4}} nC0={{nC0}} nR0={{nR0}} vbiasn0={{vbiasn0}} vbiasn1={{vbiasn1}} vbiasn2={{vbiasn2}} vbiasn3={{vbiasn3}} vbiasp0={{vbiasp0}} vinn={{vinn}} vinp={{vinp}} voutn={{voutn}} voutp={{voutp}}
+parameters fet_num={{fet_num}} use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} ibias0={{ibias0}} nA0={{nA0}} nA1={{nA1}} nA2={{nA2}} nA3={{nA3}} nA4={{nA4}} nA5={{nA5}} nA6={{nA6}} nA7={{nA7}} nA8={{nA8}} nA9={{nA9}} nB0={{nB0}} nB1={{nB1}} nB2={{nB2}} nB3={{nB3}} nB4={{nB4}} nB5={{nB5}} nB6={{nB6}} nB7={{nB7}} nB8={{nB8}} nB9={{nB9}} nC0={{nC0}} nR0={{nR0}}
 
 {% if fet_num == 7 %}
 include "/homes/natelgrw/Documents/titan_foundation_model/lstp/7nfet.pm"
@@ -20,19 +20,23 @@ include "/homes/natelgrw/Documents/titan_foundation_model/lstp/20pfet.pm"
 {% endif %}
 
 *---Core---
-MM0 Voutp net7 Vbiasn2 gnd! nfet l=nA1 nfin=nB1
-MM1 Vinn Vbiasp0 Voutn gnd! nfet l=nA2 nfin=nB2
-MM2 Vbiasn2 Vinn Vbiasn3 vdd! pfet l=nA3 nfin=nB3
-MM3 net7 gnd! Vbiasp0 vdd! pfet l=nA4 nfin=nB4
-R0 (gnd! Vinp) resistor r=nR0
-C0 (Vbiasn1 Vbiasn0) capacitor c=nC0
+* Circuit_5 Ibias0 Vinn Vinp Voutn Voutp
+*.PININFO Ibias0:I Vinn:I Vinp:I Voutn:O Voutp:O
+MM0 net7 net5 Voutn gnd! nfet l=nA0 nfin=nB0
+MM1 net7 net0 net4 gnd! nfet l=nA1 nfin=nB1
+MM2 Voutp net3 net7 gnd! nfet l=nA2 nfin=nB2
+MM3 Ibias0 net2 net2 gnd! nfet l=nA3 nfin=nB3
+MM4 Voutn net8 net5 gnd! nfet l=nA4 nfin=nB4
+MM5 net5 net0 Voutn vdd! pfet l=nA5 nfin=nB5
+MM6 net3 Vinp net8 vdd! pfet l=nA6 nfin=nB6
+MM7 vdd! net5 net3 vdd! pfet l=nA7 nfin=nB7
+MM8 net4 net7 net3 vdd! pfet l=nA8 nfin=nB8
+MM9 net7 gnd! Voutn vdd! pfet l=nA9 nfin=nB9
+R0 (Vinn Ibias0) resistor r=nR0
+C0 (Vinp vdd!) capacitor c=nC0
 
 *---Bias Sources---
-V_Vbiasn0 (Vbiasn0 gnd!) vsource dc=vbiasn0 type=dc
-V_Vbiasn1 (Vbiasn1 gnd!) vsource dc=vbiasn1 type=dc
-V_Vbiasn2 (Vbiasn2 gnd!) vsource dc=vbiasn2 type=dc
-V_Vbiasn3 (Vbiasn3 gnd!) vsource dc=vbiasn3 type=dc
-V_Vbiasp0 (Vbiasp0 gnd!) vsource dc=vbiasp0 type=dc
+I_Ibias0 (Ibias0 gnd!) isource dc=ibias0 type=dc
 
 *---Ground, VDD, VCM Declarations---
 VS (gnd! 0) vsource dc=0 type=dc

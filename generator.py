@@ -10,27 +10,23 @@ RESULTS_DIR = "results"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 class Subcircuit:
-    def __init__(self, name, num_nfet, num_pfet, num_res, num_cap, mode, 
-                 n_vbiasn=3, n_vbiasp=3, n_ibias=1, n_internal_nets=5, is_main=False, 
-                 assigned_ports=None):
+    def __init__(self, name, config, mode, start_mm=0, start_r=0, start_c=0, is_main=False, assigned_ports=None):
         # assigned_ports is a dict: {net_name: 'I' or 'O'}
         self.name = name
-        self.num_nfet = num_nfet
-        self.num_pfet = num_pfet
-        self.num_res = num_res
-        self.num_cap = num_cap
+        self.num_nfet, self.num_pfet, self.num_res, self.num_cap = config
+        
         # single ended or differential
         self.mode = mode
         self.is_main = is_main
         self.assigned_ports = assigned_ports if assigned_ports else {}
         
         self.components = []
-        self._init_components()
+        self._init_components(start_mm, start_r, start_c)
         
         # fixed nets
         self.fixed_nets = ['vdd!', 'gnd!']
         
-        # IO nets - only belonging to first main subcircuit
+        # io nets - only belonging to first main subcircuit
         if self.is_main:
             if mode == 'single_ended':
                 self.all_io_nets = ['Vinp', 'Vinn', 'Voutp']
@@ -38,94 +34,107 @@ class Subcircuit:
                 self.all_io_nets = ['Vinp', 'Vinn', 'Voutp', 'Voutn']
         else:
             self.all_io_nets = []
-            
-        # bias nets
-        self.bias_nets = [f'Vbiasn{i}' for i in range(n_vbiasn)] + \
-                          [f'Vbiasp{i}' for i in range(n_vbiasp)] + \
-                          [f'Ibias{i}' for i in range(n_ibias)]
-        
-        # internal nets
-        self.internal_nets = [f"net{i}" for i in range(n_internal_nets)]
-        
-        # Ensure assigned ports are in the pool
-        for net in self.assigned_ports:
-            if net not in self.all_io_nets and net not in self.bias_nets:
-                # If it's not a standard IO/Bias, it must be something special or internal net elevation
-                pass
 
-    def _init_components(self):
-        idx = 0
+    def _init_components(self, start_mm, start_r, start_c):
+        mm_idx = start_mm
         for i in range(self.num_nfet):
-            self.components.append(Transistor(f"MM{idx}", 'nfet'))
-            idx += 1
+            self.components.append(Transistor(f"MM{mm_idx}", 'nfet'))
+            mm_idx += 1
         for i in range(self.num_pfet):
-            self.components.append(Transistor(f"MM{idx}", 'pfet'))
-            idx += 1
-        for i in range(self.num_res):
-            self.components.append(Resistor(f"R{i}"))
-        for i in range(self.num_cap):
-            self.components.append(Capacitor(f"C{i}"))
-
-    def generate_structure(self, max_attempts=1000):
-        """
-        Generates a valid topology for this subcircuit.
-        Returns True if successful, False otherwise.
-        """
-        # gather terminals
-        for comp in self.components:
-            if isinstance(comp, Transistor):
-                if comp.type == 'nfet':
-                    comp.connect('B', 'gnd!')
-                else:
-                    comp.connect('B', 'vdd!')
-
-        self.terminals_to_assign = []
-        for comp in self.components:
-            terms = []
-            if isinstance(comp, Transistor):
-                terms = ['D', 'G', 'S']
-            else:
-                terms = comp.terminals
+            self.components.append(Transistor(f"MM{mm_idx}", 'pfet'))
+            mm_idx += 1
             
-            for t in terms:
-                self.terminals_to_assign.append((comp, t))
-        
-        # pool of available nets: ONLY use planned ports, fixed rails, and internal nets
-        self.available_nets = self.fixed_nets + list(self.assigned_ports.keys()) + self.internal_nets
-        
-        for _ in range(max_attempts):
-            import random
-            # First, ensure every assigned port is used by at least one random terminal
-            # to fulfill the "Layout matches I/O rules" requirement.
-            assigned_nets = sorted(list(self.assigned_ports.keys()))
-            remaining_terms = list(self.terminals_to_assign)
+        r_idx = start_r
+        for i in range(self.num_res):
+            self.components.append(Resistor(f"R{r_idx}"))
+            r_idx += 1
+            
+        c_idx = start_c
+        for i in range(self.num_cap):
+            self.components.append(Capacitor(f"C{c_idx}"))
+            c_idx += 1
+
+    def generate_structure(self, bias_nets, internal_nets, max_attempts=1000):
+        # store for internal use
+        self.bias_nets = bias_nets
+        self.internal_nets = internal_nets
+
+        for attempt in range(max_attempts):
+            # reset
+            for comp in self.components:
+                comp.nets = {}
+            
+            for comp in self.components:
+                if isinstance(comp, Transistor):
+                    if comp.type == 'nfet':
+                        comp.connect('B', 'gnd!')
+                    else:
+                        comp.connect('B', 'vdd!')
+
+            # pool of available terminals
+            remaining_terms = []
+            for comp in self.components:
+                terms = ['D', 'G', 'S'] if isinstance(comp, Transistor) else comp.terminals
+                for t in terms:
+                    remaining_terms.append((comp, t))
+            
             random.shuffle(remaining_terms)
             
-            # Map assigned nets to terminals first
+            assigned_nets = sorted(list(self.assigned_ports.keys()))
             assignments = {}
-            if len(assigned_nets) > len(remaining_terms):
-                # Too many assigned ports for this small subckt? 
-                # This should be caught in planning or just skip this attempt.
+            
+            # map assigned nets to terminals first
+            for net in assigned_nets:
+                role = self.assigned_ports[net]
+                
+                # terminal type selection logic
+                # Vinn, Vinp, Vbiasp, Vbiasn (input) -> gate
+                # vout, ibias, output -> drain or source
+                is_gate_only = (net.startswith(('Vinn', 'Vinp', 'Vbias')) and role == 'I')
+                is_ds_only = (role == 'O' or net.startswith('Ibias'))
+                
+                vbiasp = net.startswith('Vbiasp')
+                vbiasn = net.startswith('Vbiasn')
+                
+                selected_idx = -1
+                for idx, (comp, term) in enumerate(remaining_terms):
+                    # fet restrictions
+                    if vbiasp and not (isinstance(comp, Transistor) and comp.type == 'pfet'):
+                        continue
+                    if vbiasn and not (isinstance(comp, Transistor) and comp.type == 'nfet'):
+                        continue
+                        
+                    # terminal type checks
+                    if isinstance(comp, Transistor):
+                        if is_gate_only and term != 'G':
+                            continue
+                        if is_ds_only and term not in ('D', 'S'):
+                            continue
+                    
+                    selected_idx = idx
+                    break
+                
+                if selected_idx != -1:
+                    comp, term = remaining_terms.pop(selected_idx)
+                    comp.connect(term, net)
+                    assignments[(comp, term)] = net
+            
+            if len(assignments) < len(assigned_nets):
                 continue
-                
-            for i, net in enumerate(assigned_nets):
-                comp, term = remaining_terms.pop()
-                comp.connect(term, net)
-                assignments[(comp, term)] = net
-                
-            # Randomly assign all remaining terminals
+            
+            # randomly assign remaining terminals
+            # use nets intended for this subcircuit
+            available_nets = self.fixed_nets + self.all_io_nets + list(self.assigned_ports.keys()) + internal_nets
             for comp, term in remaining_terms:
-                net = random.choice(self.available_nets)
-                comp.connect(term, net)
+                comp.connect(term, random.choice(available_nets))
                 
-            if self._is_valid():
+            if self._is_valid(available_nets):
                 return True
-        
         return False
 
-    def _is_valid(self):
+    def _is_valid(self, available_nets):
         # floating net check
-        net_counts = {n: 0 for n in self.available_nets}
+        net_counts = {n: 0 for n in available_nets}
         for comp in self.components:
             for t in comp.terminals:
                 n = comp.get_net(t)
@@ -136,7 +145,7 @@ class Subcircuit:
             if net_counts[net] == 1:
                 return False
         
-        # trivial connections
+        # trivial connections and node accuracy
         for comp in self.components:
             if isinstance(comp, Transistor):
                 d = comp.get_net('D')
@@ -148,8 +157,27 @@ class Subcircuit:
                     n = comp.get_net(t)
                     if n not in self.fixed_nets:
                         is_all_rails = False
-                        break
+                    
+                    # vbiasp/vbiasn type check
+                    if n:
+                        if n.startswith('Vbiasp') and comp.type != 'pfet':
+                            return False
+                        if n.startswith('Vbiasn') and comp.type != 'nfet':
+                            return False
+                        
+                        # pininfo role vs terminal check
+                        if n in self.assigned_ports:
+                            role = self.assigned_ports[n]
+                            is_gate_node = (n.startswith(('Vinn', 'Vinp', 'Vbias')) and role == 'I')
+                            is_ds_node = (role == 'O' or n.startswith('Ibias'))
+                            
+                            if is_gate_node and t != 'G':
+                                return False
+                            if is_ds_node and t not in ('D', 'S'):
+                                return False
+
                 if is_all_rails: return False
+                
             elif isinstance(comp, (Resistor, Capacitor)):
                 p = comp.get_net('P')
                 n = comp.get_net('N')
@@ -172,18 +200,43 @@ class Subcircuit:
                  if 'Vinn' not in G or 'Voutn' not in G: return False
                  if not (nx.has_path(G, 'Vinp', 'Voutp') or nx.has_path(G, 'Vinp', 'Voutn')): return False
 
-        # Ensure all assigned ports are actually used (at least one connection)
-        # (This is already guaranteed by the construction above, but good to check)
-        for net in self.assigned_ports:
+        # ensure assigned ports are used
+        # verify pininfo matches connections
+        for net, role in self.assigned_ports.items():
             if net_counts.get(net, 0) == 0:
                 return False
+            
+            # check pin role vs connection type
+            # I: must connect to g or passive
+            # O: must connect to d/s or passive
+            is_connected_to_g = False
+            is_connected_to_ds = False
+            is_connected_to_passive = False
+            
+            for comp in self.components:
+                for t in comp.terminals:
+                    if comp.get_net(t) == net:
+                        if isinstance(comp, Transistor):
+                            if t == 'G':
+                                is_connected_to_g = True
+                            elif t in ['D', 'S']:
+                                is_connected_to_ds = True
+                        else:
+                            is_connected_to_passive = True
+            
+            if role == 'I':
+                # input must connect to gate or passive
+                if not (is_connected_to_g or is_connected_to_passive):
+                    return False
+            elif role == 'O':
+                # output must connect to drain/source or passive
+                if not (is_connected_to_ds or is_connected_to_passive):
+                    return False
              
         return True
 
     def get_pairs(self):
-        """
-        Returns a list of sets of paired components.
-        """
+        # returns list of sets of paired components
         comps = [c for c in self.components if isinstance(c, Transistor)]
         pairs = []
         processed = set()
@@ -213,7 +266,7 @@ class Subcircuit:
                     
                     is_pair = False
                     
-                    # 1: same gate AND (same source OR symmetric source)
+                    # same gate and same/symmetric source
                     if c1.get_net('G') == c2.get_net('G'):
                         s1 = c1.get_net('S')
                         s2 = c2.get_net('S')
@@ -222,7 +275,7 @@ class Subcircuit:
                         elif s1 in sym_nets and sym_nets[s1] == s2:
                             is_pair = True
                         
-                    # 2: symmetric connections
+                    # symmetric connections
                     match_count = 0
                     for term in ['D', 'G', 'S']:
                         n1 = c1.get_net(term)
@@ -269,36 +322,23 @@ class Subcircuit:
             elif isinstance(comp, Resistor):
                 p = comp.get_net('P')
                 n = comp.get_net('N')
-                idx = comp.name[1:]
-                param_name = f"nR{idx}"
-                lines.append(f"{comp.name} ({p} {n}) resistor r={param_name}")
+                nA, nB = param_map[comp]
+                lines.append(f"{comp.name} ({p} {n}) resistor r={nA}")
             elif isinstance(comp, Capacitor):
                 p = comp.get_net('P')
                 n = comp.get_net('N')
-                idx = comp.name[1:]
-                param_name = f"nC{idx}"
-                lines.append(f"{comp.name} ({p} {n}) capacitor c={param_name}")
+                nA, nB = param_map[comp]
+                lines.append(f"{comp.name} ({p} {n}) capacitor c={nA}")
         return lines
 
 class NetlistGenerator:
-    def __init__(self, *args):
-        self.configs = []
-        self.mode = None
-        self.n_vbiasn = 0
-        self.n_vbiasp = 0
-        self.n_ibias = 0
-        self.n_internal_nets = 0
-
-        if len(args) < 5:
-            raise ValueError("Must provide at least one config, n_vbiasn, n_vbiasp, n_ibias, n_internal_nets, and a mode")
-            
-        self.mode = args[-1]
-        self.n_internal_nets = args[-2]
-        self.n_ibias = args[-3]
-        self.n_vbiasp = args[-2-2]
-        self.n_vbiasn = args[-5]
-        self.configs = args[:-5]
-        
+    def __init__(self, configs, mode, n_vbiasn, n_vbiasp, n_ibias, n_internal_nets):
+        self.configs = configs
+        self.mode = mode
+        self.n_vbiasn = n_vbiasn
+        self.n_vbiasp = n_vbiasp
+        self.n_ibias = n_ibias
+        self.n_internal_nets = n_internal_nets
         self.subcircuits = []
         
     def generate_random(self, max_netlists=500, max_attempts=100000):
@@ -328,35 +368,68 @@ class NetlistGenerator:
             subckt_assignments = [{} for _ in range(len(self.configs))]
             subckt_assignments[0].update(main_ports)
             
-            # assign I/O logic
-            for net in all_bias_nets:
-                # each bias net has 70% chance of being used
-                if random.random() < 0.7:
-                    num_users = random.randint(1, len(self.configs))
-                    users_indices = random.sample(range(len(self.configs)), num_users)
-                    
-                    if num_users > 1:
-                        if random.choice(['external', 'internal']) == 'internal':
-                            source_idx = random.choice(users_indices)
-                            for idx in users_indices:
-                                subckt_assignments[idx][net] = 'O' if idx == source_idx else 'I'
-                        else:
-                            for idx in users_indices:
-                                subckt_assignments[idx][net] = 'I'
-                    else:
-                        subckt_assignments[users_indices[0]][net] = 'I'
+            # subckt 0 is main, must contain vin/vout
+            # generalized bias distribution
+            # - each used bias net is i in exactly one subcircuit m
+            # - each used bias net is o in at most one subcircuit n
+            # - if both exist, m < n
+            # - all bias nodes in subckt 0 are i
             
+            used_bias_nets = []
+            for net in all_bias_nets:
+                if random.random() < 0.7:
+                    used_bias_nets.append(net)
+                    # all are i in subckt 0
+                    subckt_assignments[0][net] = 'I'
+            
+            if len(self.configs) > 1 and used_bias_nets:
+                # optionally assign o in higher subcircuit
+                for net in used_bias_nets:
+                    if random.random() < 0.6:
+                        # pick subcircuit j where 0 < j
+                        target_j = random.randint(1, len(self.configs) - 1)
+                        subckt_assignments[target_j][net] = 'O'
+                
+                # auxiliary subcircuits drive at least one bias
+                for j in range(1, len(self.configs)):
+                    if not any(r == 'O' for r in subckt_assignments[j].values()):
+                        non_driven = [n for n in used_bias_nets if not any(subckt_assignments[k].get(n) == 'O' for k in range(1, len(self.configs)))]
+                        if non_driven:
+                            net = random.choice(non_driven)
+                            subckt_assignments[j][net] = 'O'
+                        else:
+                            # add new bias to subckt 0 and drive here
+                            available = [n for n in all_bias_nets if n not in used_bias_nets]
+                            if available:
+                                net = random.choice(available)
+                                used_bias_nets.append(net)
+                                subckt_assignments[0][net] = 'I'
+                                subckt_assignments[j][net] = 'O'
+
+            all_internal_nets = [f"net{i}" for i in range(self.n_internal_nets)]
+
             current_subcircuits = []
             success = True
             
+            # track global naming indices
+            global_mm_idx = 0
+            global_r_idx = 0
+            global_c_idx = 0
+
             for idx, config in enumerate(self.configs):
-                n_nfet, n_pfet, n_res, n_cap = config
                 is_main = (idx == 0)
-                subckt = Subcircuit(f"Subckt_{idx}", n_nfet, n_pfet, n_res, n_cap, self.mode, 
-                                    self.n_vbiasn, self.n_vbiasp, self.n_ibias, self.n_internal_nets, 
+                subckt = Subcircuit(f"Subckt_{idx}", config, self.mode, 
+                                    start_mm=global_mm_idx, 
+                                    start_r=global_r_idx, 
+                                    start_c=global_c_idx,
                                     is_main=is_main, assigned_ports=subckt_assignments[idx])
                 
-                if not subckt.generate_structure():
+                # update global indices
+                global_mm_idx += (subckt.num_nfet + subckt.num_pfet)
+                global_r_idx += subckt.num_res
+                global_c_idx += subckt.num_cap
+                
+                if not subckt.generate_structure(all_bias_nets, all_internal_nets):
                     success = False
                     break
                 current_subcircuits.append(subckt)
@@ -394,8 +467,6 @@ class NetlistGenerator:
             
         bias_sources = []
         for net in sorted(all_used_nets):
-            if net in bias_drivers:
-                continue
             
             if net.startswith('Ibias'):
                 param = f"ibias{net[5:]}"
@@ -403,6 +474,10 @@ class NetlistGenerator:
             elif net.startswith('Vbias'):
                 param = f"vbias{net[5:].lower()}"
                 bias_sources.append(f"V_{net} ({net} gnd!) vsource dc={param} type=dc")
+
+        param_idx = 0
+        r_idx = 0
+        c_idx = 0
 
         for subckt in self.subcircuits:
             pairs = subckt.get_pairs()
@@ -421,11 +496,15 @@ class NetlistGenerator:
                 
             for comp in subckt.components:
                 if isinstance(comp, Resistor):
-                    idx = comp.name[1:]
-                    used_params.add(f"nR{idx}") 
+                    param_name = f"nR{r_idx}"
+                    subckt_param_map[comp] = (param_name, None)
+                    used_params.add(param_name)
+                    r_idx += 1
                 elif isinstance(comp, Capacitor):
-                    idx = comp.name[1:]
-                    used_params.add(f"nC{idx}")
+                    param_name = f"nC{c_idx}"
+                    subckt_param_map[comp] = (param_name, None)
+                    used_params.add(param_name)
+                    c_idx += 1
 
             ports = []
             pininfo = []
@@ -447,48 +526,46 @@ class NetlistGenerator:
             
             total_fet_num += subckt.num_nfet + subckt.num_pfet
             
-            # Instantiate
+            # instantiate
             inst_ports = []
             for net in ports:
-                # All subckt ports now map to global nets of the same name
+                # map subckt ports to global nets
                 inst_ports.append(net)
             
             inst_ports_str = " ".join(inst_ports)
             if len(self.subcircuits) > 1:
                 instantiations.append(f"x{subckt.name} {inst_ports_str} {subckt.name}")
-
-        # Generate shared bias sources only for nets that have NO internal driver
-        # actually, for bias sources, they are usually supplied externally.
-        # But per "if one bias is in one it must be out in another", 
-        # it implies internal generation. However, Vsource/Isource are global.
-        # If a net has a Vsource, it's driven by that source. 
-        # If it's "Out" from a subckt, that subckt is driving it.
-        # Rule change: Only generate a top-level source if NO subcircuit is driving it.
         
         if len(self.subcircuits) == 1:
-            # Solitary subckt Case: Flatten hierarchy
+            # single subcircuit case
             subckt = self.subcircuits[0]
-            # (Parameters have already been calculated in the loop above)
             core_lines = subckt.get_netlist_lines(subckt_param_map)
-            core_netlist = "\n".join(core_lines) + \
+            
+            # formatting title and pininfo
+            net_list = " ".join(sorted(subckt.assigned_ports.keys()))
+            pin_list = " ".join([f"{net}:{role}" for net, role in sorted(subckt.assigned_ports.items())])
+            
+            core_netlist = f"* Circuit_{index} {net_list}\n*.PININFO {pin_list}\n" + \
+                           "\n".join(core_lines) + \
                            "\n\n*---Bias Sources---\n" + "\n".join(bias_sources)
         else:
-            # Multi-subckt Case
+            # multi-subcircuit case
             core_netlist = "\n\n".join(all_subckt_defs) + \
                            "\n\n*---Bias Sources---\n" + "\n".join(bias_sources) + \
                            "\n\n*---Instantiations---\n" + "\n".join(instantiations)
         
-        # Ensure all used biases are in the parameters list
+        # ensure only bias nets are in parameters
         for net in all_used_nets:
-            used_params.add(net.lower())
+            if net.startswith('Ibias') or net.startswith('Vbias'):
+                used_params.add(net.lower())
         
-        # Parameters
+        # parameters
         param_list_tpl = []
         for p in sorted(used_params):
             param_list_tpl.append(f"{p}={{{{{p}}}}}")
         extra_params_tpl = " ".join(param_list_tpl)
         
-        # Fill Template
+        # fill template
         if self.mode == 'single_ended':
             template = SINGLE_ENDED_TEMPLATE
         else:

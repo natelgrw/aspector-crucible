@@ -1,6 +1,6 @@
 simulator lang=spectre 
 global 0 gnd! vdd!
-parameters fet_num={{fet_num}} use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} ibias0={{ibias0}} nA1={{nA1}} nA2={{nA2}} nA3={{nA3}} nA4={{nA4}} nA5={{nA5}} nA6={{nA6}} nA7={{nA7}} nA8={{nA8}} nB1={{nB1}} nB2={{nB2}} nB3={{nB3}} nB4={{nB4}} nB5={{nB5}} nB6={{nB6}} nB7={{nB7}} nB8={{nB8}} nC0={{nC0}} nR0={{nR0}} vbiasn0={{vbiasn0}} vbiasp0={{vbiasp0}} vinn={{vinn}} vinp={{vinp}} voutp={{voutp}}
+parameters fet_num={{fet_num}} use_tran=0 rfeedback_val=1000 dc_offset=0 gain_n=-0.5 tempc={{tempc}} vdd={{vdd}} vcm={{vcm}} nA0={{nA0}} nA1={{nA1}} nA10={{nA10}} nA11={{nA11}} nA12={{nA12}} nA13={{nA13}} nA14={{nA14}} nA2={{nA2}} nA3={{nA3}} nA4={{nA4}} nA5={{nA5}} nA6={{nA6}} nA7={{nA7}} nA8={{nA8}} nA9={{nA9}} nB0={{nB0}} nB1={{nB1}} nB10={{nB10}} nB11={{nB11}} nB12={{nB12}} nB13={{nB13}} nB14={{nB14}} nB2={{nB2}} nB3={{nB3}} nB4={{nB4}} nB5={{nB5}} nB6={{nB6}} nB7={{nB7}} nB8={{nB8}} nB9={{nB9}} nC0={{nC0}} nR0={{nR0}} nR1={{nR1}} vbiasn2={{vbiasn2}} vbiasp0={{vbiasp0}}
 
 {% if fet_num == 7 %}
 include "/homes/natelgrw/Documents/titan_foundation_model/lstp/7nfet.pm"
@@ -20,34 +20,44 @@ include "/homes/natelgrw/Documents/titan_foundation_model/lstp/20pfet.pm"
 {% endif %}
 
 *---Core---
-subckt Subckt_0 Ibias0 Vbiasn0 Vbiasp0 Vinn Vinp Voutp
-*.PININFO Ibias0:I Vbiasn0:I Vbiasp0:I Vinn:I Vinp:I Voutp:O
-MM0 Voutp net1 Vbiasp0 gnd! nfet l=nA1 nfin=nB1
-MM1 Vbiasn0 net1 Vinn gnd! nfet l=nA2 nfin=nB2
-MM2 Ibias0 vdd! Vinp vdd! pfet l=nA3 nfin=nB3
-MM3 Vbiasn0 gnd! Voutp vdd! pfet l=nA4 nfin=nB4
-R0 (vdd! Voutp) resistor r=nR0
-C0 (Voutp Vinn) capacitor c=nC0
+subckt Subckt_0 Vbiasn2 Vbiasp0 Vinn Vinp Voutp
+*.PININFO Vbiasn2:I Vbiasp0:I Vinn:I Vinp:I Voutp:O
+MM0 net0 Vinp vdd! gnd! nfet l=nA0 nfin=nB0
+MM1 net1 net1 Voutp gnd! nfet l=nA1 nfin=nB1
+MM2 net2 Vbiasn2 net3 gnd! nfet l=nA2 nfin=nB2
+MM3 vdd! gnd! Voutp gnd! nfet l=nA3 nfin=nB3
+MM4 net2 net0 Voutp vdd! pfet l=nA4 nfin=nB4
+MM5 net0 Vbiasp0 Voutp vdd! pfet l=nA5 nfin=nB5
+MM6 net3 Vinn net2 vdd! pfet l=nA6 nfin=nB6
+MM7 Voutp Vinp gnd! vdd! pfet l=nA7 nfin=nB7
 ends Subckt_0
 
-subckt Subckt_1 Vbiasn0 Vbiasp0
-*.PININFO Vbiasn0:I Vbiasp0:I
-MM0 Vbiasn0 Vbiasp0 net2 gnd! nfet l=nA5 nfin=nB5
-MM1 net0 net2 net2 gnd! nfet l=nA6 nfin=nB6
-MM2 net2 net0 net0 vdd! pfet l=nA7 nfin=nB7
-MM3 net0 net0 vdd! vdd! pfet l=nA8 nfin=nB8
-R0 (Vbiasp0 Vbiasn0) resistor r=nR0
-C0 (net2 Vbiasp0) capacitor c=nC0
+subckt Subckt_1 Vbiasn2
+*.PININFO Vbiasn2:O
+MM8 net0 net1 net1 gnd! nfet l=nA9 nfin=nB9
+MM9 net1 net3 Vbiasn2 gnd! nfet l=nA10 nfin=nB10
+MM10 net1 net3 net0 vdd! pfet l=nA8 nfin=nB8
+R0 (net3 vdd!) resistor r=nR0
 ends Subckt_1
 
+subckt Subckt_2 Vbiasp0
+*.PININFO Vbiasp0:O
+MM11 net0 gnd! net2 gnd! nfet l=nA11 nfin=nB11
+MM12 net3 net1 net0 gnd! nfet l=nA12 nfin=nB12
+MM13 net2 net2 net1 vdd! pfet l=nA13 nfin=nB13
+MM14 gnd! net2 Vbiasp0 vdd! pfet l=nA14 nfin=nB14
+R1 (vdd! net3) resistor r=nR1
+C0 (net3 gnd!) capacitor c=nC0
+ends Subckt_2
+
 *---Bias Sources---
-I_Ibias0 (Ibias0 gnd!) isource dc=ibias0 type=dc
-V_Vbiasn0 (Vbiasn0 gnd!) vsource dc=vbiasn0 type=dc
+V_Vbiasn2 (Vbiasn2 gnd!) vsource dc=vbiasn2 type=dc
 V_Vbiasp0 (Vbiasp0 gnd!) vsource dc=vbiasp0 type=dc
 
 *---Instantiations---
-xSubckt_0 Ibias0 Vbiasn0 Vbiasp0 Vinn Vinp Voutp Subckt_0
-xSubckt_1 Vbiasn0 Vbiasp0 Subckt_1
+xSubckt_0 Vbiasn2 Vbiasp0 Vinn Vinp Voutp Subckt_0
+xSubckt_1 Vbiasn2 Subckt_1
+xSubckt_2 Vbiasp0 Subckt_2
 
 *---Ground, VDD, VCM Declarations---
 VS (gnd! 0) vsource dc=0 type=dc
