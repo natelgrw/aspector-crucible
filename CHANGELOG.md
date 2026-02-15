@@ -1,3 +1,11 @@
+Version **1.2.0**
+
+Date Released: **02/15/2026**
+
+- Pivot to op-amp circuit breaker and error injector
+- Produces a specified number of derivative netlists broken in specified ways as designated by an input 16-bit error vector
+- USPECT-256 bitwise error annotation
+
 Version **1.1.1**
 
 Date Released: **12/21/2025**

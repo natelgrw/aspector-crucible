@@ -1,4 +1,4 @@
-name: aspfdyenv
+name: aspcrucibleenv
 channels:
   - defaults
 dependencies:

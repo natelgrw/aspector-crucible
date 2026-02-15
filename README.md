@@ -1,32 +1,68 @@
-# ASPECTOR Foundry: Programmatic Op-Amp Netlist Generation
+# ASPECTOR Crucible
 
-ASPECTOR Foundry is a tool for generating diverse op-amp Spectre netlists for dataset creation and design space exploration using a graph-based random generation approach. It synthesizes valid circuit topologies and exports them as Cadence Spectre compatible `.scs` files.
+A research grade tool for generating large-scale, stochastic datasets of broken analog circuits. ASPECTOR Crucible takes a functional netlist and applies a 16-bit error vector to inject specific structural and parametric faults.
 
-ASPECTOR Foundry is part of the ASPECTOR suite, a collection of tools for AI-driven op-amp design and analysis. It is designed to be used in tandem with ASPECTOR Core, a Spectre netlist simulation pipeline for performance optimization and data collection.
+## ⛓️‍💥 Core Features
 
-Current Version: **1.1.0**
+1.  **Graph-Based Manipulation**: Parses SPICE netlists into a NetworkX graph, allowing for topological reasoning (loops, paths, isolation) rather than simple text substitution.
 
-## 💎 Features
+2.  **Stochastic Multi-Injection**: Each error bit triggers a random number of faults (1 to N) at random locations, ensuring that even the same error vector produces different broken circuits across runs.
 
-- Generates unique op-amp topologies by randomly connecting components while adhering to validity rules
-- Supports both single ended and differential op-amp architectures
-- Automatically identifies and pairs transistors based on shared gates and symmetric connections
-- Generates netlists with parameterized device sizes (`nA`, `nB`) and passive values (`nR`, `nC`) for easy optimization or sweeping
+3.  **Compound Interaction**: Multiple error bits can be active simultaneously, leading to complex, cascading failure modes (e.g., a transistor is both disconnected and has its parameters scrambled).
 
+4.  **Reproducibility**: If no seed is provided, a random Master Seed is generated and logged. Every output file contains a header with the Master Seed, Vector, and Date, guaranteeing exact reproducibility of any generated artifact.
 
-## 📖 How to Use
+## Error Injection Logic
 
-Ensure you have a Python environment with the necessary dependencies. You can create a Conda environment using the provided YAML file:
+The tool uses the last 16 bits of the USPECT-256 bitmap (Bits 240-255). Full documentation for the USPECT-256 bitmap can be found [here](https://github.com/natelgrw/aspector).
+
+### Universal Error Blocks (Bits 0-7)
+
+| Input Bit | USPECT-256 Bit | Name | Description |
+| --------- | -------------- | ---- | ----------- |
+| 0 | 240 | ERROR_NON_MODAL | Randomly swaps transistor types (NMOS $\leftrightarrow$ PMOS). |
+| 1 | 241 | ERROR_SOURCE_ABSENT | Disconnects nets named `Vbias*` or `Ibias*` from random components to break biasing. |
+| 2 | 242 | ERROR_GALVANIC_ISLAND | Shorts a component's terminals (bypass) and then disconnects it (floating). |
+| 3 | 243 | ERROR_IDEAL_SHORT | Creates an ideal short circuit between two random nets. |
+| 4 | 244 | ERROR_IDEAL_OPEN | Disconnects a random terminal from its net (creates a new floating net). |
+| 5 | 245 | ERROR_KCL_CONFLICT | Shorts a random net directly to VDD or GND. |
+| 6 | 246 | ERROR_KVL_CONFLICT | Shorts the Drain and Source of a random transistor. |
+| 7 | 247 | ERROR_PORT_DANGLING | Disconnects specific top-level IO ports (e.g., Vinp, Vout) from the circuit internally. |
+
+### Structural Errors (Bits 8-15)
+
+| Input Bit | USPECT-256 Bit | Name | Description |
+| --------- | -------------- | ---- | ----------- |
+| 8 | 248 | ERROR_BIAS_PATH | Shorts Gate-Drain of diode-connected transistors to GND, breaking current mirrors. |
+| 9 | 249 | ERROR_MATCH_SYMMETRY | Scrambles parameters (`L`, `nfin`, `m`) of matched transistors to disrupt symmetry. |
+| 10 | 250 | ERROR_LOOP_PHASE | 50% chance to swap global Differential Inputs; 50% chance to swap Gate-Drain on random transistors. |
+| 11 | 251 | ERROR_NODE_IMPEDANCE | Adds random 1$\Omega$ resistors from random nets to GND (leakage paths). |
+| 12 | 252 | ERROR_POTENTIAL_STACK | Shorts Drain-Source of Cascode devices (detects Stacked topology). |
+| 13 | 253 | ERROR_CURRENT_STEERING | Randomly modifies `nfin` (width) of transistors to alter current density. |
+| 14 | 254 | ERROR_SIGNAL_ISOLATION | Injects extra components (R, C, or Transistors) either in series with a net or randomly across nets. |
+| 15 | 255 | ERROR_STRUCTURAL_DROPOUT | Floats the Body terminal of random transistors (disconnects from bulk). |
+
+## Usage
 
 ```bash
-conda env create -f aspfoundry.yml
-conda activate aspfoundry
+# single generation
+python3 main_breaker.py input.scs --batch "[(1, 0b0000_0000_0000_0001)]"
+
+# batch generation with specific seed
+python3 main_breaker.py input.scs --seed 42 --batch "[(100, 0b1111_1111_1111_1111)]"
 ```
 
-Examples of netlist generation can be found in `foundry_demo.ipynb`.
+Every generated file topology includes a provenance header.
 
-Generated netlists are saved in the `results/` directory as `.scs` files.
+```scs
+*--- TOPOLOGY ---*
 
-The netlists include core circuit topology, parameter definitions for device sizes, 
-testbench setup for ASPECTOR Core analysis, and conditional model inclusions based 
-on total FET count.
+* Generated By ASPECTOR Crucible
+* Derivative Netlist: input.scs
+* Master Seed: 123456789
+* Task Seed: 123456789
+* Error Vector: 00000000_00000001
+* Date: Sun Feb 15 03:30:00 EST 2026
+
+*--- ... ---*
+```
