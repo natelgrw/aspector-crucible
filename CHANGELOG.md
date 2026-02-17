@@ -1,3 +1,10 @@
+Version **1.2.1**
+
+Date Released: **02/17/2026**
+
+- Random and precision mode implementation for error injector
+- Capable of generating a specified number of derivative netlists for a collection of netlists broken in random ways
+
 Version **1.2.0**
 
 Date Released: **02/15/2026**

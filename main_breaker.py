@@ -13,6 +13,7 @@ def main():
     parser.add_argument("output_path", nargs='?', default="results", help="Path to save the modified .scs netlist file (or directory for batch). Defaults to 'results/'.")
     parser.add_argument("--error_vector", type=str, help="Single 16-bit error vector (integer or binary string).")
     parser.add_argument("--batch", type=str, help="List of tuples for batch generation: '[(count, vector), ...]'")
+    parser.add_argument("--random_count", type=int, help="Number of random netlists to generate. Input can be a file or directory.")
     parser.add_argument("--seed", type=int, help="Random seed for reproducibility. If set, each task uses seed + task_index.")
     
     args = parser.parse_args()
@@ -21,11 +22,11 @@ def main():
     output_abs_path = os.path.abspath(args.output_path)
     
     if not os.path.exists(input_path):
-        print(f"Error: Input file '{input_path}' not found.")
+        print(f"Error: Input file or directory '{input_path}' not found.")
         sys.exit(1)
 
-    # Determine mode: Single or Batch
-    tasks = [] # List of (output_file, vector)
+    # Determine mode: Single, Batch, or Random
+    tasks = [] # List of (source_file, output_file, vector)
     
     if args.batch:
         try:
@@ -37,6 +38,11 @@ def main():
             output_dir = output_abs_path
             if not os.path.isdir(output_dir):
                  os.makedirs(output_dir, exist_ok=True)
+
+            # In batch mode, input must be a file
+            if os.path.isdir(input_path):
+                 print("Error: Batch mode requires a single input file, not a directory.")
+                 sys.exit(1)
 
             base_name = os.path.splitext(os.path.basename(input_path))[0]
             
@@ -79,14 +85,69 @@ def main():
                 for i in range(start_index, start_index + count):
                     filename = f"{base_name}_{binary_str}_{i}.scs"
                     full_path = os.path.join(output_dir, filename)
-                    tasks.append((full_path, vector))
+                    tasks.append((input_path, full_path, vector))
                     
         except Exception as e:
             print(f"Error parsing batch argument: {e}")
             sys.exit(1)
+
+    elif args.random_count:
+        # Random Mode
+        count = args.random_count
+        output_dir = output_abs_path
+        if not os.path.isdir(output_dir):
+             os.makedirs(output_dir, exist_ok=True)
+             
+        # Collect source files
+        source_files = []
+        if os.path.isfile(input_path):
+            source_files.append(input_path)
+        elif os.path.isdir(input_path):
+            for f in os.listdir(input_path):
+                if f.endswith(".scs"):
+                    source_files.append(os.path.join(input_path, f))
+            if not source_files:
+                print(f"Error: No .scs files found in directory '{input_path}'.")
+                sys.exit(1)
+        
+        print(f"Found {len(source_files)} source files. Generating {count} random tasks...")
+        
+        # We need a seed generator for the vector selection if we want THAT to be deterministic based on master seed too?
+        # The main loop sets a seed based on master_seed + i. 
+        # But we need to select files/vectors NOW to build the task list. 
+        # Alternatively, we can build the task list with placeholders or just do the random selection here using a temporary RNG.
+        # Let's use the same logic as the main loop: use a temporary seed?
+        # Actually, best to just use random here, and let the main loop enforce determinism for the injection content?
+        # No, if we want full reproducibility, the task generation (which file, which vector) needs to be seeded too.
+        
+        # Let's handle seed early
+        if args.seed is not None:
+            random.seed(args.seed)
+            print(f"Seeding random mode selection with: {args.seed}")
             
+        for i in range(count):
+            # Select random source
+            src = random.choice(source_files)
+            # Select random vector (16-bit)
+            vector = random.randint(0, 65535)
+            
+            bin_full = f"{vector:016b}"
+            binary_str = f"{bin_full[:8]}_{bin_full[8:]}"
+            base_name = os.path.splitext(os.path.basename(src))[0]
+            
+            # Filename: {original}_{vector}_{index}.scs
+            filename = f"{base_name}_{binary_str}_{i}.scs"
+            out_file = os.path.join(output_dir, filename)
+            
+            tasks.append((src, out_file, vector))
+
     elif args.error_vector:
         # Single mode
+        # In single mode, input must be a file
+        if os.path.isdir(input_path):
+             print("Error: Single mode requires a single input file, not a directory.")
+             sys.exit(1)
+
         try:
             vec_raw = args.error_vector
             if isinstance(vec_raw, str):
@@ -101,15 +162,7 @@ def main():
             else:
                 vector = int(vec_raw)
             
-            # Output path is the file path (unless it matches default 'results', then maybe treat as dir? 
-            # But commonly single mode implies exact file path if provided, or dir if default.
-            # If default "results" is used, we should probably generate a filename?
-            # argparse default is "results". 
-            
             if args.output_path == "results":
-                # User didn't specify output path, so use default directory + auto naming?
-                # Or just error out? 
-                # Let's assume if it's the default directory, we construct a filename.
                 output_dir = output_abs_path
                 os.makedirs(output_dir, exist_ok=True)
                 
@@ -119,14 +172,11 @@ def main():
                 # Single mode default index 0
                 filename = f"{base_name}_{binary_str}_0.scs"
                 out_file = os.path.join(output_dir, filename)
-                tasks.append((out_file, vector))
+                tasks.append((input_path, out_file, vector))
             else:
-                # User specified a path. Is it a dir or file?
-                # If it ends in .scs, assume file.
                 if output_abs_path.endswith('.scs'):
-                     tasks.append((output_abs_path, vector))
+                     tasks.append((input_path, output_abs_path, vector))
                 else:
-                    # Treat as directory
                     output_dir = output_abs_path
                     os.makedirs(output_dir, exist_ok=True)
                     base_name = os.path.splitext(os.path.basename(input_path))[0]
@@ -134,13 +184,13 @@ def main():
                     binary_str = f"{bin_full[:8]}_{bin_full[8:]}"
                     filename = f"{base_name}_{binary_str}_0.scs"
                     out_file = os.path.join(output_dir, filename)
-                    tasks.append((out_file, vector))
+                    tasks.append((input_path, out_file, vector))
             
         except ValueError:
             print("Error: Invalid error vector.")
             sys.exit(1)
     else:
-        print("Error: Either --error_vector or --batch must be provided.")
+        print("Error: One of --error_vector, --batch, or --random_count must be provided.")
         sys.exit(1)
 
     # Determine seed: Use provided or generate a random one
@@ -152,18 +202,18 @@ def main():
         master_seed = random.randint(0, 2**32 - 1)
         print(f"No seed provided. Auto-generated Master Seed: {master_seed}")
 
-    print(f"Processing '{input_path}' with {len(tasks)} generation tasks...")
+    print(f"Processing tasks with master seed: {master_seed}")
     
     success_count = 0
     
-    for i, (out_file, vector) in enumerate(tasks):
+    for i, (source_file, out_file, vector) in enumerate(tasks):
         try:
             # Use master_seed + index for deterministic variability
             task_seed = master_seed + i
             random.seed(task_seed)
                 
             # Re-parse for each generation to ensure fresh state
-            netlist_parser = NetlistParser(input_path)
+            netlist_parser = NetlistParser(source_file)
             netlist_parser.parse()
             
             injector = ErrorInjector(netlist_parser)
@@ -186,7 +236,7 @@ def main():
             
             metadata = [
                 "* Generated By ASPECTOR Crucible",
-                f"* Derivative Netlist: {os.path.basename(input_path)}",
+                f"* Derivative Netlist: {os.path.basename(source_file)}",
                 f"* Master Seed: {master_seed}",
                 f"* Task Seed: {task_seed}",
                 f"* Error Vector: {vector_str}",

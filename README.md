@@ -2,6 +2,8 @@
 
 A research grade tool for generating large-scale, stochastic datasets of broken analog circuits. ASPECTOR Crucible takes a functional netlist and applies a 16-bit error vector to inject specific structural and parametric faults.
 
+Current Version: **1.2.1**
+
 ## ⛓️‍💥 Core Features
 
 1.  **Graph-Based Manipulation**: Parses SPICE netlists into a NetworkX graph, allowing for topological reasoning (loops, paths, isolation) rather than simple text substitution.

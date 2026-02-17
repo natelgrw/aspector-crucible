@@ -17,6 +17,8 @@ class NetlistParser:
         self.new_parameters = {}
         self.next_nA = 1
         self.next_nB = 1
+        self.next_nR = 1
+        self.next_nC = 1
         
     def parse(self):
         with open(self.filepath, 'r') as f:
@@ -62,6 +64,16 @@ class NetlistParser:
                                 val = int(k[2:])
                                 if val >= self.next_nB: self.next_nB = val + 1
                             except ValueError: pass
+                        elif k.startswith('nR'):
+                            try:
+                                val = int(k[2:])
+                                if val >= self.next_nR: self.next_nR = val + 1
+                            except ValueError: pass
+                        elif k.startswith('nC'):
+                            try:
+                                val = int(k[2:])
+                                if val >= self.next_nC: self.next_nC = val + 1
+                            except ValueError: pass
 
     def get_next_param_name(self, prefix='nA'):
         if prefix == 'nA':
@@ -71,6 +83,14 @@ class NetlistParser:
         elif prefix == 'nB':
             name = f"nB{self.next_nB}"
             self.next_nB += 1
+            return name
+        elif prefix == 'nR':
+            name = f"nR{self.next_nR}"
+            self.next_nR += 1
+            return name
+        elif prefix == 'nC':
+            name = f"nC{self.next_nC}"
+            self.next_nC += 1
             return name
         else:
             # Default/Fallback
@@ -231,31 +251,33 @@ class NetlistParser:
         # 2. Merge new parameters
         if self.new_parameters:
              for k, v in self.new_parameters.items():
-                 if k.startswith('nA') or k.startswith('nB'):
+                 if k.startswith('nA') or k.startswith('nB') or k.startswith('nR') or k.startswith('nC'):
                       all_params[k] = f"{{{{{k}}}}}"
                  else:
                       all_params[k] = v
                       if k not in other_params_order:
                            other_params_order.append(k)
                            
-        # 3. Identify USED nA/nB parameters
+        # 3. Identify USED nA/nB/nR/nC parameters
         used_keys = set()
         for comp in self.components:
-             # Scan raw_params for nA... or nB...
+             # Scan raw_params for nA... or nB... or nR... or nC...
              # Tokens could be l=nA1, nfin=nB2, or just values
              if not comp.raw_params: continue
              tokens = comp.raw_params.replace('=', ' ').split()
              for t in tokens:
-                  if t.startswith('nA') or t.startswith('nB'):
+                  if t.startswith('nA') or t.startswith('nB') or t.startswith('nR') or t.startswith('nC'):
                        # It might be nA1 or nA1) or nA1} etc (unlikely but safe to strip)
                        # Basic cleaning
                        clean_t = "".join([c for c in t if c.isalnum()])
                        if clean_t in all_params:
                             used_keys.add(clean_t)
                             
-        # 4. Sort nA and nB (ONLY USED ONES)
+        # 4. Sort nA, nB, nR, nC (ONLY USED ONES)
         nA_keys = [k for k in all_params.keys() if k.startswith('nA') and k in used_keys]
         nB_keys = [k for k in all_params.keys() if k.startswith('nB') and k in used_keys]
+        nR_keys = [k for k in all_params.keys() if k.startswith('nR') and k in used_keys]
+        nC_keys = [k for k in all_params.keys() if k.startswith('nC') and k in used_keys]
         
         def sort_key(k):
             try:
@@ -265,6 +287,8 @@ class NetlistParser:
                 
         nA_keys = sorted(nA_keys, key=sort_key)
         nB_keys = sorted(nB_keys, key=sort_key)
+        nR_keys = sorted(nR_keys, key=sort_key)
+        nC_keys = sorted(nC_keys, key=sort_key)
         
         # 5. Reconstruct Parameter String
         new_param_parts = []
@@ -275,6 +299,12 @@ class NetlistParser:
              new_param_parts.append(f"{k}={all_params[k]}")
              
         for k in nB_keys:
+             new_param_parts.append(f"{k}={all_params[k]}")
+
+        for k in nR_keys:
+             new_param_parts.append(f"{k}={all_params[k]}")
+
+        for k in nC_keys:
              new_param_parts.append(f"{k}={all_params[k]}")
              
         if new_param_parts:
@@ -674,12 +704,15 @@ class ErrorInjector:
         count = random.randint(1, 5)
         for _ in range(count):
             target_net = random.choice(self.graph.get_nets())
-            p_res = self._add_param('imp_res', 1)
+            # Use nR parameter
+            p_res = self.parser.get_next_param_name('nR')
+            self.parser.add_parameter(p_res, 1) # Value is template anyway, but need to register it
+            
             new_res = Resistor(f"R_fault_{random.randint(0,999)}", raw_params=f"r={p_res}")
             new_res.connect('P', target_net)
             new_res.connect('N', 'gnd!')
             self.components.append(new_res)
-            print(f"  Impedance Warning: Added {p_res} Ohm resistor from {target_net} to gnd!")
+            print(f"  Impedance Warning: Added {p_res} (1 Ohm) resistor from {target_net} to gnd!")
         self._rebuild_graph()
 
     def warning_stack(self):
@@ -757,7 +790,9 @@ class ErrorInjector:
                  
                  if comp_type == 'res':
                      name = f"R_ins_{random.randint(0,9999)}"
-                     p_val = self._add_param('ins_res', '1k')
+                     p_val = self.parser.get_next_param_name('nR')
+                     self.parser.add_parameter(p_val, '1k')
+                     
                      new_comp = Resistor(name, raw_params=f"r={p_val}")
                      new_comp.connect('P', target_net)
                      new_comp.connect('N', new_net_prime)
@@ -765,7 +800,9 @@ class ErrorInjector:
                      
                  elif comp_type == 'cap':
                      name = f"C_ins_{random.randint(0,9999)}"
-                     p_val = self._add_param('ins_cap', '100f')
+                     p_val = self.parser.get_next_param_name('nC')
+                     self.parser.add_parameter(p_val, '100f')
+                     
                      new_comp = Capacitor(name, raw_params=f"c={p_val}")
                      new_comp.connect('P', target_net)
                      new_comp.connect('N', new_net_prime)

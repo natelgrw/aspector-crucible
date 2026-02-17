@@ -1,4 +1,6 @@
 __pycache__/
 good_topologies/
-USPECT_256_BITMAP.md
 bad_topologies_manual/
+.DS_Store/
+USPECT_256_BITMAP.md
+topologies.txt
